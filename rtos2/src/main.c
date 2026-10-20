@@ -29,6 +29,9 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 // Create dispatcher FIFO buffer
 K_FIFO_DEFINE(dispatcher_fifo);
+K_FIFO_DEFINE(red_fifo);
+K_FIFO_DEFINE(green_fifo);
+K_FIFO_DEFINE(yellow_fifo);
 
 
 // FIFO dispatcher data type
@@ -57,7 +60,7 @@ void green_led_task(void *, void *, void*);
 void yellow_led_task(void *, void *, void*);
 
 
-//tavoittelen toistaiseksi 1 pistettä, sillä tein 1p arvoisen ohjelman.
+//tavoittelen 3 pistettä, sillä tein aluksi 1p arvoisen ohjelman, jonka jälkeen lisäsin ajastuksen ja poistin superloopit, jolloin tämä on 3p arvoinen ohjelma.
 int main(void)
 {
 	int ret = init_led();
@@ -157,15 +160,9 @@ void uart_task(void *unused1, void *unused2, void *unused3)
 			if (rc != '\r' && rc != '\n') {
 
 				
-				if (rc == 'r' ||
-				    rc == 'y' ||
-				    rc == 'g') {
-
-					if (uart_msg_cnt < 19) {
-
-						uart_msg[uart_msg_cnt] = rc;
-						uart_msg_cnt++;
-					}
+				if (uart_msg_cnt < 19) {
+					uart_msg[uart_msg_cnt] = rc;
+					uart_msg_cnt++;
 				}
 			}
 
@@ -214,68 +211,58 @@ void uart_task(void *unused1, void *unused2, void *unused3)
 // Dispatcher task
 void dispatcher_task(void *unused1, void *unused2, void *unused3)
 {
-	while (true) {
+    while (true) {
 
-		// Receive dispatcher data from uart_task fifo
-		struct data_t *rec_item =
-			k_fifo_get(&dispatcher_fifo, K_FOREVER);
+        struct data_t *rec_item =
+            k_fifo_get(&dispatcher_fifo, K_FOREVER);
 
+        char sequence[20];
 
-		char sequence[20];
+        memcpy(sequence, rec_item->msg, 20);
 
-		memcpy(sequence,rec_item->msg,20);
+        k_free(rec_item);
 
-		k_free(rec_item);
+        printk("Dispatcher: %s\n", sequence);
 
+        char color = sequence[0];
+        int time_ms = atoi(sequence + 2);
 
-		printk("Dispatcher: %s\n", sequence);
+        struct data_t *item =
+            k_malloc(sizeof(struct data_t));
 
-		for (int i = 0; sequence[i] != '\0'; i++) {
+        if (item == NULL) {
+            continue;
+        }
 
-			char color = sequence[i];
+        snprintf(item->msg,
+                 sizeof(item->msg),
+                 "%d",
+                 time_ms);
 
+        if (color == 'r') {
 
-			// Red
-			if (color == 'r') {
+            k_fifo_put(&red_fifo, item);
+			k_mutex_lock(&light_mutex, K_FOREVER);
+			k_condvar_signal(&red_condvar);
+			k_mutex_unlock(&light_mutex);
+        }
+        else if (color == 'y') {
 
-				printk("RED\n");
+            k_fifo_put(&yellow_fifo, item);
+			k_mutex_lock(&light_mutex, K_FOREVER);
+			k_condvar_signal(&yellow_condvar);
+			k_mutex_unlock(&light_mutex);
+        }
+        else if (color == 'g') {
 
-				k_mutex_lock(&light_mutex, K_FOREVER);
+            k_fifo_put(&green_fifo, item);
+			k_mutex_lock(&light_mutex, K_FOREVER);
+			k_condvar_signal(&green_condvar);
+			k_mutex_unlock(&light_mutex);
+        }
 
-				k_condvar_signal(&red_condvar);
-
-				k_mutex_unlock(&light_mutex);
-			}
-
-
-			// Yellow
-			else if (color == 'y') {
-
-				printk("YELLOW\n");
-
-				k_mutex_lock(&light_mutex, K_FOREVER);
-
-				k_condvar_signal(&yellow_condvar);
-
-				k_mutex_unlock(&light_mutex);
-			}
-
-
-			// Green
-			else if (color == 'g') {
-
-				printk("GREEN\n");
-
-				k_mutex_lock(&light_mutex, K_FOREVER);
-
-				k_condvar_signal(&green_condvar);
-
-				k_mutex_unlock(&light_mutex);
-			}
-
-			k_sem_take(&release_sem, K_FOREVER);
-		}
-	}
+        k_sem_take(&release_sem, K_FOREVER);
+    }
 }
 
 
@@ -289,11 +276,16 @@ void red_led_task(void *, void *, void*) {
 
 		k_mutex_lock(&light_mutex, K_FOREVER);
 
-		k_condvar_wait(&red_condvar,
-			       &light_mutex,
-			       K_FOREVER);
+    	k_condvar_wait(
+        	&red_condvar,
+        	&light_mutex,
+        	K_FOREVER);
 
-		k_mutex_unlock(&light_mutex);
+    	k_mutex_unlock(&light_mutex);
+
+    	struct data_t *item =
+        	k_fifo_get(&red_fifo, K_FOREVER);
+		int time_ms = atoi(item->msg);
 
 
 		// led paalle
@@ -303,14 +295,14 @@ void red_led_task(void *, void *, void*) {
 
 
 		// nuku 1s
-		k_sleep(K_SECONDS(1));
+		k_sleep(K_MSEC(time_ms));
 
 
 		// led pois
 		gpio_pin_set_dt(&red,0);
 
 		printk("Red off\n");
-
+		k_free(item);
 		k_sem_give(&release_sem);
 	}
 }
@@ -326,11 +318,16 @@ void green_led_task(void *, void *, void*) {
 
 		k_mutex_lock(&light_mutex, K_FOREVER);
 
-		k_condvar_wait(&green_condvar,
-			       &light_mutex,
-			       K_FOREVER);
+		k_condvar_wait(
+			&green_condvar,
+			&light_mutex,
+			K_FOREVER);
 
 		k_mutex_unlock(&light_mutex);
+
+		struct data_t *item =
+			k_fifo_get(&green_fifo, K_FOREVER);
+		int time_ms = atoi(item->msg);
 
 
 		// led paalle
@@ -340,14 +337,14 @@ void green_led_task(void *, void *, void*) {
 
 
 		//nuku 1s
-		k_sleep(K_SECONDS(1));
+		k_sleep(K_MSEC(time_ms));
 
 
 		// led pois
 		gpio_pin_set_dt(&green,0);
 
 		printk("Green off\n");
-
+		k_free(item);
 		k_sem_give(&release_sem);
 	}
 }
@@ -361,14 +358,18 @@ void yellow_led_task(void *, void *, void*) {
 
 	while (true) {
 
-		
 		k_mutex_lock(&light_mutex, K_FOREVER);
 
-		k_condvar_wait(&yellow_condvar,
-			       &light_mutex,
-			       K_FOREVER);
+		k_condvar_wait(
+			&yellow_condvar,
+			&light_mutex,
+			K_FOREVER);
 
 		k_mutex_unlock(&light_mutex);
+
+		struct data_t *item =
+			k_fifo_get(&yellow_fifo, K_FOREVER);
+		int time_ms = atoi(item->msg);
 
 
 		// Yellow
@@ -379,7 +380,7 @@ void yellow_led_task(void *, void *, void*) {
 
 
 		// nuku 1s
-		k_sleep(K_SECONDS(1));
+		k_sleep(K_MSEC(time_ms));
 
 
 		// led pois
@@ -388,6 +389,7 @@ void yellow_led_task(void *, void *, void*) {
 
 		printk("Yellow off\n");
 
+		k_free(item);
 		k_sem_give(&release_sem);
 	}
 }
