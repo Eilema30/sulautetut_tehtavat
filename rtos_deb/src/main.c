@@ -6,6 +6,7 @@
 #include <zephyr/timing/timing.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /****************************
  * Remember to add line:
@@ -33,12 +34,18 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 // Create dispatcher FIFO buffer
 K_FIFO_DEFINE(dispatcher_fifo);
+K_FIFO_DEFINE(debug_fifo);
 
 
 // FIFO dispatcher data type
 struct data_t {
 	void *fifo_reserved;
 	char msg[20];
+};
+
+struct debug_data_t {
+    void *fifo_reserved;
+    char msg[100];
 };
 
 
@@ -65,9 +72,10 @@ void dispatcher_task(void *, void *, void*);
 void red_led_task(void *, void *, void*);
 void green_led_task(void *, void *, void*);
 void yellow_led_task(void *, void *, void*);
+void debug_task(void *, void *, void*);
 
 
-//tavoittelen toistaiseksi 1 pistettä, sillä tein 1p arvoisen ohjelman.
+//tavoittelen 2 pistettä, sillä tein 1 pisteen, jonka jälkeen lisäsin debug tietoa, jolloin tämä on 2p arvoinen.
 int main(void)
 {
 	int ret = init_led();
@@ -94,7 +102,7 @@ int init_led() {
 	// Led pin initialization
 	int ret = gpio_pin_configure_dt(&red, GPIO_OUTPUT_ACTIVE);
 	if (ret < 0) {
-		printk("Error: Led configure failed\n");
+		//printk("Error: Led configure failed\n");
 		return ret;
 	}
 
@@ -105,7 +113,7 @@ int init_led() {
 	// Led pin initialization
 	ret = gpio_pin_configure_dt(&green, GPIO_OUTPUT_ACTIVE);
 	if (ret < 0) {
-		printk("Error: Led configure failed\n");
+		//printk("Error: Led configure failed\n");
 		return ret;
 	}
 
@@ -116,7 +124,7 @@ int init_led() {
 	// Led pin initialization
 	ret = gpio_pin_configure_dt(&yellow, GPIO_OUTPUT_ACTIVE);
 	if (ret < 0) {
-		printk("Error: Led configure failed\n");
+		//printk("Error: Led configure failed\n");
 		return ret;
 	}
 
@@ -134,7 +142,7 @@ int init_led() {
 int init_uart() {
 
 	if (!device_is_ready(uart_dev)) {
-		printk("UART initialization failed!\n");
+		//printk("UART initialization failed!\n");
 		return 1;
 	}
 
@@ -286,8 +294,15 @@ void dispatcher_task(void *unused1, void *unused2, void *unused3)
 			k_sem_take(&release_sem, K_FOREVER);
 		}
 
-		printk("Sequence total time: %llu us\n",
-		       red_time + yellow_time + green_time);
+		struct debug_data_t *buf =
+			k_malloc(sizeof(struct debug_data_t));
+		if (buf != NULL) {
+			snprintf(buf->msg,
+					sizeof(buf->msg),
+					"Sequence total time: %llu us\n",
+					red_time + yellow_time + green_time);
+		}
+			k_fifo_put(&debug_fifo, buf);
 	}
 }
 
@@ -335,7 +350,19 @@ void red_led_task(void *, void *, void*) {
 
 		red_time = timing_us;
 
-		printk("Red task time: %llu us\n", timing_us);
+		//printk("Red task time: %llu us\n", timing_us);
+		struct debug_data_t *buf =
+			k_malloc(sizeof(struct debug_data_t));
+
+		if (buf != NULL) {
+
+    		snprintf(buf->msg,
+             		sizeof(buf->msg),
+             		"Red task time: %llu us\n",
+             		timing_us);
+
+    	k_fifo_put(&debug_fifo, buf);
+	}
 
 
 		k_sem_give(&release_sem);
@@ -379,7 +406,19 @@ void green_led_task(void *, void *, void*) {
 
 		green_time = timing_us;
 
-		printk("Green task time: %llu us\n", timing_us);
+		//printk("Green task time: %llu us\n", timing_us);
+		struct debug_data_t *buf =
+    		k_malloc(sizeof(struct debug_data_t));
+
+		if (buf != NULL) {
+
+    		snprintf(buf->msg,
+             		sizeof(buf->msg),
+             		"Green task time: %llu us\n",
+            		timing_us);
+
+    	k_fifo_put(&debug_fifo, buf);
+}
 
 
 		k_sem_give(&release_sem);
@@ -433,13 +472,45 @@ void yellow_led_task(void *, void *, void*) {
 
 		yellow_time = timing_us;
 
-		printk("Yellow task time: %llu us\n", timing_us);
+		//printk("Yellow task time: %llu us\n", timing_us);
+		struct debug_data_t *buf =
+			k_malloc(sizeof(struct debug_data_t));
 
+		if (buf != NULL) {
+
+			snprintf(buf->msg,
+			 		sizeof(buf->msg),
+			 		"Yellow task time: %llu us\n",
+			 		timing_us);
+
+		k_fifo_put(&debug_fifo, buf);
+
+	}
 
 		k_sem_give(&release_sem);
 	}
 }
 
+//Task to handle debug messages
+void debug_task(void *unused1,
+                void *unused2,
+                void *unused3)
+{
+    struct debug_data_t *received;
+
+    while (true) {
+
+        received = k_fifo_get(
+            &debug_fifo,
+            K_FOREVER);
+
+        printk("%s", received->msg);
+
+        k_free(received);
+
+        k_yield();
+    }
+}
 
 K_THREAD_DEFINE(
 	dis_thread,
@@ -503,4 +574,16 @@ K_THREAD_DEFINE(
 	PRIORITY,
 	0,
 	0
+);
+
+K_THREAD_DEFINE(
+debug_thread,
+STACKSIZE,
+debug_task,
+NULL,
+NULL,
+NULL,
+PRIORITY + 1,
+0,
+0
 );
