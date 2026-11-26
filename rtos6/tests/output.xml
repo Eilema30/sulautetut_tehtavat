@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot generator="Robot 7.5.1 (Python 3.13.7 on win32)" generated="2026-11-26T12:30:32.764442" rpa="false" schemaversion="5">
+<suite id="s1" name="Traffic Light" source="C:\sulautetut_ohjelkehit\rtos_teht6\tests\traffic_light.robot">
+<test id="s1-t1" name="Test Serial Connection" line="10">
+<kw name="Connect">
+<msg time="2026-11-26T12:30:32.919789" level="FAIL">No keyword with name 'Connect' found.</msg>
+<arg>${PORT}</arg>
+<arg>${BAUDRATE}</arg>
+<status status="FAIL" start="2026-11-26T12:30:32.919672" elapsed="0.000275">No keyword with name 'Connect' found.</status>
+</kw>
+<kw name="Log To Console" owner="BuiltIn">
+<arg>UART-yhteys avattu!</arg>
+<doc>Logs the given message to the console.</doc>
+<status status="NOT RUN" start="2026-11-26T12:30:32.920549" elapsed="0.000057"/>
+</kw>
+<kw name="Disconnect">
+<status status="NOT RUN" start="2026-11-26T12:30:32.921002" elapsed="0.000045"/>
+</kw>
+<status status="FAIL" start="2026-11-26T12:30:32.916747" elapsed="0.004661">No keyword with name 'Connect' found.</status>
+</test>
+<status status="FAIL" start="2026-11-26T12:30:32.769490" elapsed="0.153089"/>
+</suite>
+<statistics>
+<total>
+<stat pass="0" fail="1" skip="0">All Tests</stat>
+</total>
+<tag>
+</tag>
+<suite>
+<stat name="Traffic Light" id="s1" pass="0" fail="1" skip="0">Traffic Light</stat>
+</suite>
+</statistics>
+<errors>
+<msg time="2026-11-26T12:30:32.910306" level="ERROR">Error in file 'C:\sulautetut_ohjelkehit\rtos_teht6\tests\traffic_light.robot' on line 3: Importing library 'SerialLibrary' failed: ModuleNotFoundError: No module named 'serial'
+Traceback (most recent call last):
+  File "C:\Users\iahil\AppData\Local\Programs\Python\Python313\Lib\site-packages\SerialLibrary\__init__.py", line 9, in &lt;module&gt;
+    from serial import Serial, SerialBase, serial_for_url
+PYTHONPATH:
+  C:\sulautetut_ohjelkehit\rtos_teht6\tests
+  C:\Users\iahil\AppData\Local\Programs\Python\Python313\python313.zip
+  C:\Users\iahil\AppData\Local\Programs\Python\Python313\DLLs
+  C:\Users\iahil\AppData\Local\Programs\Python\Python313\Lib
+  C:\Users\iahil\AppData\Local\Programs\Python\Python313
+  C:\Users\iahil\AppData\Local\Programs\Python\Python313\Lib\site-packages</msg>
+</errors>
+</robot>
